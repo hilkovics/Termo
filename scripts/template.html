@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="sk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Skládka Senec CH₄ a LFG</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: veľká mapa vľavo, súhrn, sondy, detekcie CH4 a vrstvy v bočnom paneli vpravo; na mobile pod sebou */
+:root {
+  color-scheme: light;
+  --bg: #eef0ec;
+  --panel: #fbfcfa;
+  --fg: #15191b;
+  --fg2: #4b5458;
+  --muted: #7d8683;
+  --line: #dbdfd8;
+  --accent: #0d7480;
+  --accent-ink: #ffffff;
+  --track: #d3d8d2;
+  --font-display: "Archivo", system-ui, "Segoe UI", sans-serif;
+  --font-body: "Archivo", system-ui, "Segoe UI", sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1113; --panel: #161a1d; --fg: #eaede8; --fg2: #b5bdba; --muted: #7c8582;
+    --line: #283034; --accent: #43b8c5; --accent-ink: #0b1416; --track: #2c3438;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1113; --panel: #161a1d; --fg: #eaede8; --fg2: #b5bdba; --muted: #7c8582;
+  --line: #283034; --accent: #43b8c5; --accent-ink: #0b1416; --track: #2c3438;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--fg);
+  font: 14px/1.45 var(--font-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 16px 24px;
+}
+[hidden] { display: none !important; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.num { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+header.top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 18px; margin-bottom: 14px; }
+header.top h1 { font: 700 22px/1.15 var(--font-display); margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+header.top .meta { color: var(--fg2); font-size: 13px; }
+.app { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; align-items: start; }
+.col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+#map { position: sticky; top: 16px; height: clamp(460px, calc(100vh - 90px), 980px); border-radius: 10px; border: 1px solid var(--line); overflow: hidden; background: var(--track); }
+input[type=range] { width: 100%; accent-color: var(--accent); font: inherit; }
+
+/* bočný panel */
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); border-radius: 10px; overflow: hidden; border: 1px solid var(--line); }
+.stat { background: var(--panel); padding: 10px 12px; }
+.stat .k { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.stat .v { font: 600 20px/1.2 var(--font-display); margin-top: 2px; }
+.stat .v small { font: 400 12px var(--font-body); color: var(--fg2); margin-left: 3px; }
+.stat .s { font-size: 12px; color: var(--fg2); }
+.box { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.box h2 { font: 600 13px var(--font-display); margin: 0; text-transform: uppercase; letter-spacing: 0.06em; color: var(--fg2); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { font: 500 12px var(--font-body); border: 0; background: transparent; color: var(--fg2); padding: 5px 10px; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed=true] { background: var(--accent); color: var(--accent-ink); }
+.seg button svg { vertical-align: -1px; margin-right: 4px; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.lbl { font-size: 12px; color: var(--fg2); }
+.ramp { height: 10px; border-radius: 3px; }
+.ramp-ticks { display: flex; justify-content: space-between; font: 11px var(--font-data); color: var(--muted); margin-top: 3px; }
+.note { font-size: 12px; color: var(--fg2); margin: 0; }
+.chk { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+.chk input { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
+.chks { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+
+/* detekcie CH4 */
+.toplist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.toplist li button { width: 100%; display: grid; grid-template-columns: 12px minmax(0,1fr); gap: 10px; align-items: center; text-align: left; background: none; border: 0; border-top: 1px solid var(--line); padding: 7px 2px; cursor: pointer; color: var(--fg); font: inherit; }
+.toplist li:first-child button { border-top: 0; }
+.toplist li button:hover { background: var(--bg); }
+.toplist .val { font: 500 13px var(--font-data); }
+.toplist .sub { font-size: 12px; color: var(--fg2); }
+.dot { width: 12px; height: 12px; border-radius: 50%; box-shadow: 0 0 0 1px rgba(0,0,0,.35); }
+.dot.diamond { border-radius: 1px; transform: rotate(45deg) scale(0.85); }
+.dot.square { border-radius: 1px; }
+.recleg { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--fg2); }
+.recleg div { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.recleg div.off { opacity: 0.4; }
+.recleg b { font: 500 12px var(--font-data); color: var(--fg); }
+
+/* odplyňovacie šachty a ventily */
+.well { position: relative; width: 24px; height: 24px; }
+.well .wn { width: 24px; height: 24px; border-radius: 50%; background: #ffffff; color: #111; border: 2px solid #111; font: 700 11px/1 var(--font-body); display: grid; place-items: center; box-shadow: 0 1px 4px rgba(0,0,0,.55); }
+.well.ot .wn { width: 18px; height: 18px; margin: 3px; border-radius: 3px; background: #cfd5d8; font-size: 8px; border-width: 1.5px; }
+.well .wco { position: absolute; left: 27px; top: 3px; background: rgba(15,18,20,.85); color: #fff; font: 600 11px/1.4 var(--font-data); padding: 0 5px; border-radius: 4px; white-space: nowrap; pointer-events: none; }
+.lowzoom .well .wco { display: none; }
+.wtable-wrap { overflow-x: auto; }
+.wtable { width: 100%; border-collapse: collapse; font-size: 12px; }
+.wtable th { font-weight: 500; color: var(--muted); text-align: right; padding: 4px; vertical-align: bottom; line-height: 1.25; }
+.wtable th:first-child, .wtable td:first-child { text-align: left; }
+.wtable td { padding: 4px; border-top: 1px solid var(--line); text-align: right; font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+.wtable tbody tr { cursor: pointer; }
+.wtable tbody tr:hover td { background: var(--bg); }
+.wtable tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.wtable td.hi { font-weight: 600; color: var(--fg); }
+.wtable tr.sep td { border-top: 2px solid var(--line); }
+
+/* termo snímka a opona */
+.termo-ramp { height: 10px; border-radius: 3px; background: linear-gradient(90deg, #2b2b2b, #9a9a9a 38%, #c81e14 40%, #f0641e 58%, #f5d21e 80%, #b4d23c); }
+.swipe { position: absolute; top: 0; bottom: 0; width: 0; z-index: 650; pointer-events: none; }
+.swipe::before { content: ""; position: absolute; top: 0; bottom: 0; left: -1px; width: 2px; background: #fff; box-shadow: 0 0 4px rgba(0,0,0,.6); }
+.swipe .handle { pointer-events: auto; position: absolute; top: 50%; left: -17px; width: 34px; height: 34px; margin-top: -17px; border-radius: 50%; border: 0; background: #fff; color: #15191b; font: 700 15px var(--font-body); cursor: ew-resize; box-shadow: 0 1px 6px rgba(0,0,0,.5); touch-action: none; }
+.swipe .lab { position: absolute; top: 10px; background: rgba(15,18,20,.75); color: #fff; font: 600 11px var(--font-body); letter-spacing: .05em; text-transform: uppercase; padding: 3px 7px; border-radius: 5px; white-space: nowrap; }
+.swipe .lab.l { right: 10px; }
+.swipe .lab.r { left: 10px; }
+
+.leaflet-container { font-family: var(--font-body); }
+.leaflet-popup-content { font: 13px/1.45 var(--font-body); margin: 10px 12px; }
+.leaflet-popup-content b { font-family: var(--font-data); }
+
+@media (max-width: 900px) {
+  .app { grid-template-columns: minmax(0, 1fr); }
+  #map { position: relative; top: 0; height: 60vh; min-height: 340px; }
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>Skládka Senec · CH₄, CO a teplota LFG</h1>
+  <span class="meta" id="meta"></span>
+</header>
+
+<main class="app">
+  <section class="col">
+    <div id="map" role="region" aria-label="Mapa skládky s meraniami"></div>
+  </section>
+
+  <aside class="col">
+    <div class="stats" id="stats"></div>
+
+    <div class="panel box">
+      <h2>Odplyňovacie šachty</h2>
+      <div class="chks">
+        <label class="chk"><input type="checkbox" id="chkWells" checked> Šachty (OŠ) a ventily (OT)</label>
+        <label class="chk"><input type="checkbox" id="chkZones" checked> Okruh 30 m</label>
+      </div>
+      <div class="row"><span class="lbl">Okruh ukazuje</span>
+        <div class="seg" id="segZone"><button type="button" data-v="lfg" aria-pressed="true">Teplota LFG</button><button type="button" data-v="co" aria-pressed="false">CO</button></div>
+      </div>
+      <div id="zoneLegend"></div>
+      <div class="wtable-wrap">
+        <table class="wtable">
+          <thead><tr><th>Šachta</th><th>T LFG °C<br>V/2026</th><th>CO ppm<br>V/2026</th><th>CO ppm<br>2025</th><th>Dron CH₄<br>do 10 m</th></tr></thead>
+          <tbody id="wellRows"></tbody>
+        </table>
+      </div>
+      <p class="note">Polohy sú z PDF STELLA, súradnice v stupňoch a minútach (4814785 = 48° 14,785′). Teplota LFG a CO sú z merania Senec V/2026. Okruh 30 m okolo sondy je pri susedných sondách rozdelený v polovici vzdialenosti, každé miesto patrí najbližšej sonde. „Dron CH₄“ je najvyššia hodnota z oboch záznamov do 10 m od šachty v ppm·m. CO 1 000 ppm je pravdepodobne horná hranica prístroja.</p>
+    </div>
+
+    <div class="panel box">
+      <h2>Detekcie metánu (dron)</h2>
+      <label class="chk"><input type="checkbox" id="chkDet" checked> Zobraziť body CH₄</label>
+      <div class="row"><span class="lbl">Záznam</span><div class="seg" id="segRec"></div></div>
+      <div class="recleg" id="recLegend"></div>
+      <div>
+        <div class="row"><label class="lbl" for="thr">Zobraziť od</label><span class="num" id="thrVal"></span></div>
+        <input type="range" id="thr" min="0" max="3000" step="50" value="1000">
+      </div>
+      <div>
+        <div class="ramp" id="ch4Ramp"></div>
+        <div class="ramp-ticks"><span>10</span><span>100</span><span>1 000</span><span>10 000 ppm·m</span></div>
+      </div>
+      <ul class="toplist" id="toplist"></ul>
+      <p class="note" id="note"></p>
+    </div>
+
+    <div class="panel box">
+      <h2>Podklad a termo snímka</h2>
+      <div class="row"><span class="lbl">Podklad</span>
+        <div class="seg" id="segBase"><button type="button" data-v="sat" aria-pressed="true">Satelit</button><button type="button" data-v="map" aria-pressed="false">Mapa</button></div>
+      </div>
+      <div class="row">
+        <label class="chk"><input type="checkbox" id="chkTermo" checked> Termo snímka</label>
+        <div class="seg" id="segCmp"><button type="button" data-v="blend" aria-pressed="false">Prelínanie</button><button type="button" data-v="swipe" aria-pressed="true">Opona</button></div>
+      </div>
+      <div>
+        <div class="row"><label class="lbl" for="termoOp">Krytie</label><span class="num" id="termoOpVal">100 %</span></div>
+        <input type="range" id="termoOp" min="0" max="100" step="5" value="100">
+      </div>
+      <div>
+        <div class="termo-ramp"></div>
+        <div class="ramp-ticks"><span>chladnejšie</span><span>teplejšie (odhad)</span></div>
+      </div>
+      <p class="note">result.tif, ortomozaika 18 797 × 20 736 px (1,6 cm/px), na mape zmenšená na 13 cm/px. Snímka nemá teplotnú stupnicu, poradie farieb je odhad.</p>
+    </div>
+  </aside>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+// ---------- pomocné ----------
+const fmt = (v, d = 0) => v.toLocaleString('sk-SK', { minimumFractionDigits: d, maximumFractionDigits: d });
+const fmtPct = v => fmt(v, v % 1 ? 1 : 0);
+function hav(a, b) { const k = Math.PI / 180, dLa = (b.lat - a.lat) * k, dLo = (b.lon - a.lon) * k; const h = Math.sin(dLa / 2) ** 2 + Math.cos(a.lat * k) * Math.cos(b.lat * k) * Math.sin(dLo / 2) ** 2; return 6371000 * 2 * Math.asin(Math.sqrt(h)); }
+function lerpHex(stops, s) {
+  s = Math.max(0, Math.min(1, s)); const p = s * (stops.length - 1), i = Math.min(stops.length - 2, Math.floor(p)), f = p - i;
+  const a = parseInt(stops[i].slice(1), 16), b = parseInt(stops[i + 1].slice(1), 16);
+  const c = [16, 8, 0].map(sh => Math.round(((a >> sh) & 255) * (1 - f) + ((b >> sh) & 255) * f));
+  return '#' + c.map(x => x.toString(16).padStart(2, '0')).join('');
+}
+const gradCss = stops => `linear-gradient(90deg, ${stops.join(',')})`;
+function seg(id, fn) {
+  const el = document.getElementById(id);
+  el.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    el.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b));
+    fn(b.dataset.v);
+  });
+}
+function chk(id, fn) { document.getElementById(id).addEventListener('change', e => fn(e.target.checked)); }
+
+// ---------- body CH4 z dronu ----------
+// hlavný záznam letu: [t s, lat, lon, ch4, výška, rýchlosť, dosah lasera, vietor, smer, svetlo, yaw, pitch, foto]
+const D = __DATA__;
+// ďalšie záznamy: len body s CH4 [lat, lon, ch4, výška, dosah lasera, čas, foto]
+const X = __EXTRA__;
+const startClock = D.start.slice(11);
+const [h0, m0, s0] = startClock.split(':').map(Number);
+const clock = t => { const s = Math.floor(h0 * 3600 + m0 * 60 + s0 + t) % 86400; return [s / 3600 | 0, (s / 60 | 0) % 60, s % 60].map(x => String(x).padStart(2, '0')).join(':'); };
+const recLabels = [startClock, ...X.map(x => x.label)];
+const allDet = D.rows.filter(r => r[3] > 0).map(r => ({ lat: r[1], lon: r[2], ch4: r[3], alt: r[4], dist: r[6], time: clock(r[0]), photo: r[12] || '', rec: startClock, src: 0 }))
+  .concat(...X.map((x, i) => x.rows.map(p => ({ lat: p[0], lon: p[1], ch4: p[2], alt: p[3], dist: p[4], time: p[5], photo: p[6] || '', rec: x.label, src: i + 1 }))));
+
+// sekvenčná škála CH4 (žltá → tmavočervená), logaritmicky 10–10 000 ppm·m
+const CH4_STOPS = ['#fde9a9', '#fdb863', '#f4743f', '#d7301f', '#8c0d1d'];
+const ch4S = v => (Math.log10(Math.max(10, Math.min(10000, v))) - 1) / 3;
+const ch4Color = v => lerpHex(CH4_STOPS, ch4S(v));
+document.getElementById('ch4Ramp').style.background = gradCss(CH4_STOPS);
+
+// ---------- odplyňovacie šachty (PDF STELLA, meranie 6. 6. 2025) ----------
+// [názov, krátke číslo, súrad. x (ddmm.mmm bez bodky), súrad. Y, CH4 %, CO2 %, O2 %, H2S ppm, CO ppm, N2 %]
+const WELLS_RAW = [
+  ['OŠ 1', '1', 1722969, 4814785, 49.3, 41.4, 0.1, 243, 33, 9.1],
+  ['OŠ 2', '2', 1722984, 4814774, 50.3, 40, 0.1, 485, 265, 9.6],
+  ['OŠ 3', '3', 1723008, 4814756, 39.1, 37.9, 1.6, 93, 102, 21.3],
+  ['OŠ 4', '4', 1722982, 4814803, 47, 40, 0.2, 257, 215, 12.8],
+  ['OŠ 5', '5', 1723008, 4814793, 47.7, 42.3, 0.2, 336, 322, 9.8],
+  ['OŠ 6', '6', 1723027, 4814778, 30.3, 21.4, 1.6, 15, 42, 46.7],
+  ['OŠ 7', '7', 1723003, 4814819, 51.2, 43.1, 0.1, 488, 398, 5.6],
+  ['OŠ 8', '8', 1723019, 4814805, 48.2, 42.4, 0.1, 475, 289, 9.2],
+  ['OŠ 9', '9', 1723037, 4814791, 3.7, 2.8, 19.2, 8, 16, 74.3],
+  ['OŠ 10', '10', 1723018, 4814837, 0, 0.2, 19.9, 0, 0, 79.9],
+  ['OŠ 10A', '10A', 1723003, 4814841, 5.2, 4.2, 17.4, 15, 23, 73.3],
+  ['OŠ 11', '11', 1723041, 4814822, 49.2, 42.5, 0.1, 274, 292, 8.2],
+  ['OŠ 12', '12', 1723061, 4814805, 14.4, 14.3, 12.3, 21, 19, 59],
+  ['OŠ 13', '13', 1723064, 4814837, 48.6, 42, 0.2, 489, 403, 9.2],
+  ['OŠ 14', '14', 1723090, 4814825, 49.6, 41.2, 0.3, 292, 226, 9],
+  ['OŠ 15', '15', 1723080, 4814852, 49.5, 42, 0.4, 399, 268, 8.1],
+  ['OT1', 'T1', 1722982, 4814777, 38.9, 32.6, 3.7, 388, 356, 24.8],
+  ['OT2', 'T2', 1722986, 4814801, 48.6, 41, 0.6, 454, 402, 9.7],
+  ['OT3', 'T3', 1723006, 4814816, 48.3, 42.4, 0.2, 394, 301, 9.1],
+  ['OT4', 'T4', 1723027, 4814833, 49.3, 42.3, 0, 485, 315, 8.4],
+  ['OT5', 'T5', 1723028, 4814834, 49.1, 42.2, 0.1, 414, 423, 8.6],
+];
+// meranie Senec V/2026 (Tabuľka výsledkov meraní Senec V_2026.xlsx), sonda = číslo odplyňovacej šachty:
+// [timer min, T_meteo, T_air, T_well, T_LFG, CO_ppm, CO_od, CO_do, CO_AVG, CO_2025]
+const SENEC = {
+  '11': [0, 8.3, 8.70, 8, 13.8, 278, 225, 240, 280, 246],
+  '14': [10, 8.3, 8.85, 11.9, 13.7, 170, 140, 155, 218, 195],
+  '15': [20, 8.7, 9.27, 14, 16.6, 1000, null, null, 288, 310.5],
+  '7': [30, 9, 9.47, 12.8, 13.3, 219, 105, 180, 261, 282],
+  '4': [40, 9.2, 9.71, 18.3, 14.1, 202, 140, 170, 180, 186.5],
+  '1': [50, 9.6, 10.21, 14.5, 15.2, 155, 93, 120, 181, 177],
+  '2': [65, 10, 10.35, 15.1, 21.5, 1000, null, null, 294, 281.5],
+  '3': [80, 10, 10.42, null, null, 5, 1, 4, 280, 150],
+  '8': [95, 10.2, 10.67, 13.5, 17.4, 498, 400, 420, 314, 311.5],
+  '13': [110, 11, 11.52, 16.2, 18, 764, 400, 460, 397, 395.5],
+};
+const senecOf = no => {
+  const a = SENEC[no]; if (!a) return null;
+  const [timer, tMeteo, tAir, tWell, tLfg, co, coOd, coDo, coAvg, co2025] = a;
+  return { timer, tMeteo, tAir, tWell, tLfg, co, coOd, coDo, coAvg, co2025 };
+};
+const dm = v => Math.floor(v / 1e5) + (v % 1e5) / 1000 / 60;
+const wells = WELLS_RAW.map(([name, no, x, y, ch4, co2, o2, h2s, co, n2]) => {
+  const w = { name, no, lat: dm(y), lon: dm(x), ch4, co2, o2, h2s, co, n2, ot: name.startsWith('OT'), s: name.startsWith('OT') ? null : senecOf(no) };
+  const near = allDet.filter(r => hav(r, w) <= 10);
+  w.droneMax = near.length ? Math.max(...near.map(r => r.ch4)) : null; w.droneN = near.length;
+  return w;
+});
+const zoneWells = wells.filter(w => w.s);
+
+// ---------- súhrn ----------
+const maxCh4 = allDet.reduce((m, r) => r.ch4 > m.ch4 ? r : m, allDet[0]);
+const withT = zoneWells.filter(w => w.s.tLfg != null);
+const maxT = withT.reduce((m, w) => w.s.tLfg > m.s.tLfg ? w : m, withT[0]);
+const avgT = withT.reduce((a, w) => a + w.s.tLfg, 0) / withT.length;
+const maxCo = Math.max(...zoneWells.map(w => w.s.co));
+const coHigh = zoneWells.filter(w => w.s.co >= 500);
+document.getElementById('meta').textContent = `CH₄ z dronu 19. 8. 2026 (záznamy ${recLabels.join(' a ')}) · sondy Senec V/2026 · polohy šachiet STELLA`;
+[
+  ['Max. CH₄ dron', fmt(maxCh4.ch4), 'ppm·m', `${maxCh4.time}, záznam ${maxCh4.rec}`],
+  ['CH₄ nad 1 000', fmt(allDet.filter(r => r.ch4 >= 1000).length), 'bodov', `z ${fmt(allDet.length)} detekcií`],
+  ['Max. T LFG', fmt(maxT.s.tLfg, 1), '°C', maxT.name],
+  ['Priemer T LFG', fmt(avgT, 1), '°C', `${withT.length} sond, V/2026`],
+  ['Max. CO', fmt(maxCo), 'ppm', zoneWells.filter(w => w.s.co === maxCo).map(w => w.name).join(', ')],
+  ['CO od 500 ppm', fmt(coHigh.length), 'sondy', coHigh.map(w => w.name).join(', ')],
+].forEach(([k, v, u, s]) => {
+  const d = document.createElement('div'); d.className = 'stat';
+  d.innerHTML = `<div class="k">${k}</div><div class="v num">${v}<small>${u}</small></div><div class="s">${s}</div>`;
+  document.getElementById('stats').appendChild(d);
+});
+
+// ---------- mapa ----------
+const map = L.map('map', { preferCanvas: true, zoomControl: true, maxZoom: 21 });
+const baseSat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 21, maxNativeZoom: 19, attribution: 'Snímky © Esri, Maxar, Earthstar Geographics' });
+const baseMap = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 21, maxNativeZoom: 20, subdomains: 'abcd', attribution: '© OpenStreetMap © CARTO' });
+baseSat.addTo(map);
+L.control.scale({ metric: true, imperial: false }).addTo(map);
+const fitAll = () => { map.invalidateSize(); map.fitBounds(L.latLngBounds(allDet.map(r => [r.lat, r.lon]).concat(wells.map(w => [w.lat, w.lon]))), { padding: [24, 24] }); };
+fitAll(); window.addEventListener('load', fitAll);
+seg('segBase', v => { if (v === 'sat') { map.removeLayer(baseMap); baseSat.addTo(map); } else { map.removeLayer(baseSat); baseMap.addTo(map); } });
+
+// termo ortomozaika z result.tif (WGS84), zmenšená 8× do termo-result.png
+const TB = { w: 17.3815706973407, n: 48.2482225704157, sx: 2.22156383955507e-7 * 8, sy: 1.48384977194382e-7 * 8, pw: 2349, ph: 2592 };
+map.createPane('termo').style.zIndex = 350;
+const termo = L.imageOverlay('termo-result.png', [[TB.n - TB.ph * TB.sy, TB.w], [TB.n, TB.w + TB.pw * TB.sx]], { pane: 'termo', opacity: 1, interactive: false }).addTo(map);
+
+// ---------- okruh 30 m okolo sond; prekryv susedných okruhov delí os medzi sondami (najbližšia sonda) ----------
+const ZONE_R = 30;
+map.createPane('zones').style.zIndex = 380;
+map.getPane('zones').style.pointerEvents = 'none';
+const zoneRenderer = L.svg({ pane: 'zones' });
+const zoneLayer = L.layerGroup().addTo(map);
+const lat0 = zoneWells[0].lat, lon0 = zoneWells[0].lon, kx = Math.cos(lat0 * Math.PI / 180) * 111320, ky = 110574;
+const toXY = (lat, lon) => [(lon - lon0) * kx, (lat - lat0) * ky];
+const toLL = ([x, y]) => [lat0 + y / ky, lon0 + x / kx];
+function clipCloser(poly, a, b) {
+  // ponechá časť mnohouholníka bližšie k bodu a než k bodu b
+  const d = [b[0] - a[0], b[1] - a[1]], m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+  const f = p => (p[0] - m[0]) * d[0] + (p[1] - m[1]) * d[1];
+  const out = [];
+  poly.forEach((p, i) => {
+    const q = poly[(i + 1) % poly.length], fp = f(p), fq = f(q);
+    if (fp <= 0) out.push(p);
+    if ((fp <= 0) !== (fq <= 0)) { const t = fp / (fp - fq); out.push([p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t]); }
+  });
+  return out;
+}
+zoneWells.forEach(w => {
+  const c = toXY(w.lat, w.lon);
+  let poly = Array.from({ length: 72 }, (_, k) => [c[0] + ZONE_R * Math.cos(k * Math.PI / 36), c[1] + ZONE_R * Math.sin(k * Math.PI / 36)]);
+  zoneWells.forEach(o => { if (o !== w) poly = clipCloser(poly, c, toXY(o.lat, o.lon)); });
+  w.zone = L.polygon(poly.map(toLL), { pane: 'zones', renderer: zoneRenderer, color: '#ffffff', weight: 1.5, opacity: 0.85, fillOpacity: 0.55, interactive: false }).addTo(zoneLayer);
+});
+const ZONE_VARS = {
+  lfg: { get: s => s.tLfg, min: 13, max: 22, stops: ['#f3e9fc', '#cfa9ee', '#a066d8', '#6f2fb3', '#431677'], ticks: ['13 °C', '17,5 °C', '22 °C'] },
+  co: { get: s => s.co, min: 0, max: 1000, stops: ['#dff5f0', '#9fe0d2', '#4fb9a6', '#1d8a79', '#0b5249'], ticks: ['0', '500', '1 000 ppm'] },
+};
+let zoneVar = 'lfg';
+function paintZones() {
+  const v = ZONE_VARS[zoneVar];
+  zoneWells.forEach(w => {
+    const val = v.get(w.s);
+    w.zone.setStyle(val == null
+      ? { fillColor: '#8a8f93', fillOpacity: 0.3, dashArray: '4 4' }
+      : { fillColor: lerpHex(v.stops, (val - v.min) / (v.max - v.min)), fillOpacity: 0.55, dashArray: null });
+  });
+  const missing = zoneWells.filter(w => v.get(w.s) == null).map(w => w.name);
+  document.getElementById('zoneLegend').innerHTML = `<div class="ramp" style="background:${gradCss(v.stops)}"></div><div class="ramp-ticks">${v.ticks.map(t => `<span>${t}</span>`).join('')}</div>` +
+    (missing.length ? `<p class="note" style="margin-top:4px">Sivý prerušovaný okruh: bez merania (${missing.join(', ')}).</p>` : '');
+}
+paintZones();
+seg('segZone', v => { zoneVar = v; paintZones(); });
+chk('chkZones', on => on ? zoneLayer.addTo(map) : map.removeLayer(zoneLayer));
+
+// ---------- body CH4 na mape: tvar = záznam, farba = ppm·m ----------
+const detLayer = L.layerGroup().addTo(map);
+let thr = 1000, recShow = 'all';
+const SHAPES = ['circle', 'diamond', 'square'];
+const REC_STROKE = ['#111111', '#ffffff', '#111111'];
+const shapeOf = src => SHAPES[src % SHAPES.length];
+L.Canvas.include({
+  _updateShape(layer, shape) {
+    if (!this._drawing || layer._empty()) return;
+    const p = layer._point, ctx = this._ctx, r = Math.max(Math.round(layer._radius), 1);
+    ctx.beginPath();
+    if (shape === 'diamond') { const d = r * 1.25; ctx.moveTo(p.x, p.y - d); ctx.lineTo(p.x + d, p.y); ctx.lineTo(p.x, p.y + d); ctx.lineTo(p.x - d, p.y); ctx.closePath(); }
+    else { const d = r * 0.89; ctx.rect(p.x - d, p.y - d, 2 * d, 2 * d); }
+    this._fillStroke(ctx, layer);
+  }
+});
+const ShapeMarker = L.CircleMarker.extend({ _updatePath() { this.options.shape === 'circle' ? this._renderer._updateCircle(this) : this._renderer._updateShape(this, this.options.shape); } });
+const shapeSvg = (src, fill) => {
+  const s = shapeOf(src), st = `fill="${fill}" stroke="rgba(0,0,0,.45)" stroke-width="1"`;
+  const body = s === 'circle' ? `<circle r="5" ${st}/>` : s === 'diamond' ? `<path d="M0,-6 L6,0 L0,6 L-6,0Z" ${st}/>` : `<rect x="-4.5" y="-4.5" width="9" height="9" ${st}/>`;
+  return `<svg width="13" height="13" viewBox="-7 -7 14 14" aria-hidden="true">${body}</svg>`;
+};
+document.getElementById('segRec').innerHTML = `<button type="button" data-v="all" aria-pressed="true">Oba</button>` +
+  recLabels.map((l, i) => `<button type="button" data-v="${i}" aria-pressed="false">${shapeSvg(i, '#f4743f')}${l.slice(0, 5)}</button>`).join('');
+const popupHtml = r => `CH₄ <b>${fmt(r.ch4)} ppm·m</b><br>${r.time} · záznam ${r.rec}<br>výška ${fmt(r.alt, 1)} m · dosah lasera ${fmt(r.dist, 1)} m` + (r.photo ? `<br><span style="color:#777">${r.photo}</span>` : '');
+function drawDetections() {
+  detLayer.clearLayers();
+  const vis = r => r.ch4 >= thr && (recShow === 'all' || r.src === Number(recShow));
+  allDet.filter(vis).sort((a, b) => a.ch4 - b.ch4).forEach(r => {
+    r.marker = new ShapeMarker([r.lat, r.lon], { shape: shapeOf(r.src), radius: 4 + 9 * ch4S(r.ch4), color: REC_STROKE[r.src % 3], weight: r.src ? 1.5 : 1, opacity: r.src ? 0.95 : 0.7, fillColor: ch4Color(r.ch4), fillOpacity: 0.9 })
+      .bindPopup(popupHtml(r)).addTo(detLayer);
+  });
+  document.getElementById('thrVal').textContent = thr ? `${fmt(thr)} ppm·m` : 'všetky';
+  const shown = allDet.filter(vis);
+  document.getElementById('recLegend').innerHTML = recLabels.map((l, i) => {
+    const all = allDet.filter(r => r.src === i), on = recShow === 'all' || Number(recShow) === i;
+    const n = on ? all.filter(r => r.ch4 >= thr).length : 0;
+    return `<div class="${on ? '' : 'off'}">${shapeSvg(i, 'var(--fg2)')}<span>záznam ${l}, max. ${fmt(Math.max(...all.map(r => r.ch4)))} ppm·m</span><b>${fmt(n)} / ${fmt(all.length)}</b></div>`;
+  }).join('');
+  const ul = document.getElementById('toplist'); ul.innerHTML = '';
+  [...shown].sort((a, b) => b.ch4 - a.ch4).slice(0, 8).forEach(r => {
+    const li = document.createElement('li');
+    li.innerHTML = `<button type="button"><span class="dot ${shapeOf(r.src)}" style="background:${ch4Color(r.ch4)}"></span><span><span class="val">${fmt(r.ch4)} ppm·m</span><br><span class="sub">${r.time} · výška ${fmt(r.alt, 1)} m</span></span></button>`;
+    li.firstChild.addEventListener('click', () => {
+      if (!map.hasLayer(detLayer)) { document.getElementById('chkDet').checked = true; detLayer.addTo(map); }
+      map.setView([r.lat, r.lon], Math.max(map.getZoom(), 18));
+      r.marker.openPopup();
+    });
+    ul.appendChild(li);
+  });
+  document.getElementById('note').textContent = `Na mape ${fmt(shown.length)} z ${fmt(allDet.length)} detekcií. Tvar značky ukazuje záznam, farba hodnotu ppm·m. Kliknutím na riadok sa mapa presunie na bod.`;
+}
+seg('segRec', v => { recShow = v; drawDetections(); });
+document.getElementById('thr').addEventListener('input', e => { thr = Number(e.target.value); drawDetections(); });
+chk('chkDet', on => on ? detLayer.addTo(map) : map.removeLayer(detLayer));
+drawDetections();
+
+// ---------- značky šachiet a tabuľka ----------
+const wellLayer = L.layerGroup().addTo(map);
+wells.forEach(w => {
+  const badge = w.s ? `<span class="wco">${w.s.tLfg != null ? fmt(w.s.tLfg, 1) + ' °C · ' : ''}CO ${fmt(w.s.co)}</span>` : '';
+  const icon = L.divIcon({ className: '', iconSize: [24, 24], iconAnchor: [12, 12], popupAnchor: [0, -12], html: `<div class="well${w.ot ? ' ot' : ''}"><div class="wn">${w.no}</div>${badge}</div>` });
+  w.marker = L.marker([w.lat, w.lon], { icon, zIndexOffset: 500, title: w.name, keyboard: false }).bindPopup(
+    `<b>${w.name}</b> ${w.ot ? 'ventil' : 'odplyňovacia šachta'}` +
+    (w.s ? `<br><span style="color:#777">Senec V/2026 (+${w.s.timer} min):</span>` +
+      `<br>T LFG <b>${w.s.tLfg != null ? fmt(w.s.tLfg, 1) + ' °C' : 'nemerané'}</b> · CO <b>${fmt(w.s.co)} ppm</b>` + (w.s.coOd != null ? ` (od–do ${fmt(w.s.coOd)}–${fmt(w.s.coDo)})` : '') +
+      `<br>T vrt ${w.s.tWell != null ? fmt(w.s.tWell, 1) + ' °C' : '–'} · T vzduch ${fmt(w.s.tAir, 1)} °C · T meteo ${fmt(w.s.tMeteo, 1)} °C` +
+      `<br>CO priemer ${fmt(w.s.coAvg)} ppm · CO 2025 ${fmt(w.s.co2025, 1)} ppm` : '') +
+    `<br><span style="color:#777">Meranie 6. 6. 2025:</span><br>CH₄ ${fmtPct(w.ch4)} % · CO₂ ${fmtPct(w.co2)} % · O₂ ${fmtPct(w.o2)} %<br>H₂S ${fmt(w.h2s)} ppm · CO ${fmt(w.co)} ppm · N₂ ${fmtPct(w.n2)} %` +
+    `<br>Dron do 10 m: ${w.droneMax !== null ? `max. <b>${fmt(w.droneMax)} ppm·m</b> (${w.droneN} bodov)` : 'bez detekcie'}` +
+    `<br><span style="color:#777">${w.lat.toFixed(5)} N, ${w.lon.toFixed(5)} E</span>`
+  ).addTo(wellLayer);
+});
+chk('chkWells', on => on ? wellLayer.addTo(map) : map.removeLayer(wellLayer));
+const wellRows = document.getElementById('wellRows');
+wellRows.innerHTML = wells.map((w, i) =>
+  `<tr tabindex="0" data-i="${i}"${w.ot && !wells[i - 1].ot ? ' class="sep"' : ''}><td>${w.name}</td>` +
+  `<td class="${w.s && w.s.tLfg >= 17 ? 'hi' : ''}">${w.s && w.s.tLfg != null ? fmt(w.s.tLfg, 1) : '–'}</td>` +
+  `<td class="${w.s && w.s.co >= 500 ? 'hi' : ''}">${w.s ? fmt(w.s.co) : '–'}</td>` +
+  `<td>${w.s ? fmt(w.s.co2025, 1) : '–'}</td><td>${w.droneMax !== null ? fmt(w.droneMax) : '–'}</td></tr>`).join('');
+const openWell = e => {
+  const tr = e.target.closest('tr'); if (!tr) return;
+  const w = wells[Number(tr.dataset.i)];
+  if (!map.hasLayer(wellLayer)) { document.getElementById('chkWells').checked = true; wellLayer.addTo(map); }
+  map.setView([w.lat, w.lon], Math.max(map.getZoom(), 19)); w.marker.openPopup();
+};
+wellRows.addEventListener('click', openWell);
+wellRows.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openWell(e); } });
+const lowZoom = () => map.getContainer().classList.toggle('lowzoom', map.getZoom() < 18);
+map.on('zoomend', lowZoom); lowZoom();
+
+// ---------- termo vrstva: prelínanie a opona ----------
+let termoOn = true, cmpMode = 'swipe', swipeX = 0.5;
+const swipeEl = document.createElement('div');
+swipeEl.className = 'swipe';
+swipeEl.innerHTML = '<span class="lab l">Termo</span><span class="lab r">Podklad</span><button class="handle" type="button" aria-label="Posunúť oponu (šípky vľavo/vpravo)">⇔</button>';
+map.getContainer().appendChild(swipeEl);
+L.DomEvent.disableClickPropagation(swipeEl);
+function applyClip() {
+  const pane = map.getPane('termo');
+  if (cmpMode !== 'swipe' || !termoOn) { pane.style.clip = ''; swipeEl.hidden = true; return; }
+  swipeEl.hidden = false;
+  const size = map.getSize(), x = size.x * swipeX;
+  swipeEl.style.left = x + 'px';
+  const nw = map.containerPointToLayerPoint([0, 0]), se = map.containerPointToLayerPoint(size), cx = map.containerPointToLayerPoint([x, 0]).x;
+  pane.style.clip = `rect(${nw.y}px, ${cx}px, ${se.y}px, ${nw.x}px)`;
+}
+map.on('move zoom resize', applyClip);
+const handle = swipeEl.querySelector('.handle');
+const moveSwipe = f => { swipeX = Math.max(0.02, Math.min(0.98, f)); applyClip(); };
+handle.addEventListener('pointerdown', e => { handle.setPointerCapture(e.pointerId); map.dragging.disable(); e.preventDefault(); });
+handle.addEventListener('pointermove', e => {
+  if (!handle.hasPointerCapture(e.pointerId)) return;
+  const r = map.getContainer().getBoundingClientRect(); moveSwipe((e.clientX - r.left) / r.width);
+});
+['pointerup', 'pointercancel'].forEach(ev => handle.addEventListener(ev, () => map.dragging.enable()));
+handle.addEventListener('keydown', e => {
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { moveSwipe(swipeX + (e.key === 'ArrowLeft' ? -0.05 : 0.05)); e.preventDefault(); }
+});
+seg('segCmp', v => { cmpMode = v; applyClip(); });
+chk('chkTermo', on => { on ? termo.addTo(map) : map.removeLayer(termo); termoOn = on; applyClip(); });
+document.getElementById('termoOp').addEventListener('input', e => {
+  termo.setOpacity(e.target.value / 100); document.getElementById('termoOpVal').textContent = e.target.value + ' %';
+});
+applyClip(); window.addEventListener('load', applyClip);
+</script>
+</body>
+</html>
