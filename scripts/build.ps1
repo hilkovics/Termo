@@ -1,4 +1,4 @@
-param([string]$Csv, [string]$Template, [string]$Out, [string[]]$Extra = @())
+param([string]$Csv, [string]$Template, [string]$Out, [string[]]$Extra = @(), [string]$TempGrid = '')
 $inv = [cultureinfo]::InvariantCulture
 $rows = Import-Csv $Csv
 $t0 = [datetime]::ParseExact($rows[0].time, 'yyyy/MM/dd HH:mm:ss', $inv)
@@ -20,6 +20,8 @@ $extra = foreach ($x in $Extra) {
   "extra $x : $($xr.Count) rows, $(@($pts).Count) with CH4" | Out-Host
   '{"label":"' + $xr[0].time.Substring(11) + '","rows":[' + (@($pts) -join ",`n") + ']}'
 }
-$html = [IO.File]::ReadAllText($Template).Replace('__DATA__', $data).Replace('__EXTRA__', '[' + (@($extra) -join ',') + ']')
+# mriežka polôh v palete termo snímky (z TempCode.cs), vložená ako base64
+$grid = if ($TempGrid) { [Convert]::ToBase64String([IO.File]::ReadAllBytes($TempGrid)) } else { '' }
+$html = [IO.File]::ReadAllText($Template).Replace('__DATA__', $data).Replace('__EXTRA__', '[' + (@($extra) -join ',') + ']').Replace('__TEMPGRID__', $grid)
 [IO.File]::WriteAllText($Out, $html, (New-Object System.Text.UTF8Encoding $false))
 "written $((Get-Item $Out).Length) bytes, $($rows.Count) rows"

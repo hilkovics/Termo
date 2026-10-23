@@ -152,16 +152,16 @@ input[type=range] { width: 100%; accent-color: var(--accent); font: inherit; }
         <label class="chk"><input type="checkbox" id="chkZones" checked> Okruh 30 m</label>
       </div>
       <div class="row"><span class="lbl">Okruh ukazuje</span>
-        <div class="seg" id="segZone"><button type="button" data-v="lfg" aria-pressed="true">Teplota LFG</button><button type="button" data-v="co" aria-pressed="false">CO</button></div>
+        <div class="seg" id="segZone"><button type="button" data-v="lfg" aria-pressed="true">Teplota LFG</button><button type="button" data-v="co" aria-pressed="false">CO</button><button type="button" data-v="termo" aria-pressed="false">Termo Ø</button></div>
       </div>
       <div id="zoneLegend"></div>
       <div class="wtable-wrap">
         <table class="wtable">
-          <thead><tr><th>Šachta</th><th>T LFG °C<br>V/2026</th><th>CO ppm<br>V/2026</th><th>CO ppm<br>2025</th><th>Dron CH₄<br>do 10 m</th></tr></thead>
+          <thead><tr><th>Šachta</th><th>T LFG °C<br>V/2026</th><th>CO ppm<br>V/2026</th><th>Termo Ø °C<br>30 m</th><th>Dron CH₄<br>do 10 m</th></tr></thead>
           <tbody id="wellRows"></tbody>
         </table>
       </div>
-      <p class="note">Polohy sú z PDF STELLA, súradnice v stupňoch a minútach (4814785 = 48° 14,785′). Teplota LFG a CO sú z merania Senec V/2026. Okruh 30 m okolo sondy je pri susedných sondách rozdelený v polovici vzdialenosti, každé miesto patrí najbližšej sonde. „Dron CH₄“ je najvyššia hodnota z oboch záznamov do 10 m od šachty v ppm·m. CO 1 000 ppm je pravdepodobne horná hranica prístroja.</p>
+      <p class="note">Polohy sú z PDF STELLA, súradnice v stupňoch a minútach (4814785 = 48° 14,785′). Teplota LFG a CO sú z merania Senec V/2026. Okruh 30 m okolo sondy je pri susedných sondách rozdelený v polovici vzdialenosti, každé miesto patrí najbližšej sonde. „Termo Ø“ je priemerná teplota povrchu z termo snímky v celom kruhu 30 m okolo šachty, odhadnutá z farby. „Dron CH₄“ je najvyššia hodnota z oboch záznamov do 10 m od šachty v ppm·m. CO 1 000 ppm je pravdepodobne horná hranica prístroja.</p>
     </div>
 
     <div class="panel box">
@@ -195,10 +195,15 @@ input[type=range] { width: 100%; accent-color: var(--accent); font: inherit; }
         <input type="range" id="termoOp" min="0" max="100" step="5" value="100">
       </div>
       <div>
-        <div class="termo-ramp"></div>
+        <div class="row"><label class="lbl" for="tColor">Farba začína pri</label><span class="num" id="tColorVal"></span></div>
+        <input type="range" id="tColor" min="23" max="34" step="0.5" value="30">
+      </div>
+      <div>
+        <div class="termo-ramp" id="termoRamp"></div>
         <div class="ramp-ticks"><span>22 °C</span><span>paleta Hot Iron</span><span>35 °C</span></div>
       </div>
-      <p class="note">result.tif, ortomozaika 18 797 × 20 736 px (1,6 cm/px), na mape zmenšená na 13 cm/px. Rozsah teplôt snímky je 22 – 35 °C, paleta Hot Iron: chladnejšie miesta sú šedé (tmavé = 22 °C), najteplejšie zafarbené od červenej po žltú (do 35 °C). Presná hranica, kde začína farba, nie je v snímke uvedená, preto sú teploty medzi krajmi len približné.</p>
+      <p class="note">Kliknutím kamkoľvek do mapy zobrazíte približnú teplotu povrchu z termo snímky. Teplota sa odhaduje z farby: šedá je 22 °C až hranica farby (tmavšia = chladnejšia), červená až žltá je hranica farby až 35 °C. Kde presne farba začína, snímka neuvádza, preto ju nastavíte posuvníkom.</p>
+      <p class="note">result.tif, ortomozaika 18 797 × 20 736 px (1,6 cm/px), na mape zobrazená po 13 cm, teploty počítané po 40 cm.</p>
     </div>
   </aside>
 </main>
@@ -333,6 +338,58 @@ const TB = { w: 17.3815706973407, n: 48.2482225704157, sx: 2.22156383955507e-7 *
 map.createPane('termo').style.zIndex = 350;
 const termo = L.imageOverlay('termo-result.png', [[TB.n - TB.ph * TB.sy, TB.w], [TB.n, TB.w + TB.pw * TB.sx]], { pane: 'termo', opacity: 1, interactive: false }).addTo(map);
 
+// ---------- teplota z termo snímky ----------
+// mriežka polôh v palete Hot Iron (TempCode.cs): hlavička int32 šírka, výška, factor; potom bajt na bunku
+// (0 = bez dát, 1–128 šedá časť, 129–255 farebná časť); 1 bunka = factor × factor px pôvodnej snímky
+const TGRID_B64 = '__TEMPGRID__';
+const T_MIN = 22, T_MAX = 35;
+let tColor = 30;
+let TG = null;
+if (TGRID_B64) {
+  const bin = atob(TGRID_B64), buf = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+  const dv = new DataView(buf.buffer), f = dv.getInt32(8, true);
+  TG = { w: dv.getInt32(0, true), h: dv.getInt32(4, true), cx: 2.22156383955507e-7 * f, cy: 1.48384977194382e-7 * f, cells: buf.subarray(12) };
+}
+// šedá časť palety: T_MIN … hranica farby, farebná časť: hranica farby … T_MAX
+const tempOf = c => { const u = (c - 1) / 254; return u <= 0.5 ? T_MIN + u / 0.5 * (tColor - T_MIN) : tColor + (u - 0.5) / 0.5 * (T_MAX - tColor); };
+function codeAt(lat, lon) {
+  if (!TG) return 0;
+  const col = Math.floor((lon - TB.w) / TG.cx), row = Math.floor((TB.n - lat) / TG.cy);
+  return col < 0 || row < 0 || col >= TG.w || row >= TG.h ? 0 : TG.cells[row * TG.w + col];
+}
+// histogram buniek v kruhu s polomerom r metrov; expected = počet buniek celého kruhu
+function circleHist(lat, lon, r) {
+  const hist = new Uint32Array(256);
+  if (!TG) return { hist, expected: 1 };
+  const kxw = Math.cos(lat * Math.PI / 180) * 111320, kyw = 110574;
+  const r0 = Math.max(0, Math.floor((TB.n - lat - r / kyw) / TG.cy)), r1 = Math.min(TG.h - 1, Math.floor((TB.n - lat + r / kyw) / TG.cy));
+  const c0 = Math.max(0, Math.floor((lon - r / kxw - TB.w) / TG.cx)), c1 = Math.min(TG.w - 1, Math.floor((lon + r / kxw - TB.w) / TG.cx));
+  for (let row = r0; row <= r1; row++) {
+    const dy = (TB.n - (row + 0.5) * TG.cy - lat) * kyw;
+    for (let col = c0; col <= c1; col++) {
+      const dx = (TB.w + (col + 0.5) * TG.cx - lon) * kxw;
+      if (dx * dx + dy * dy <= r * r) hist[TG.cells[row * TG.w + col]]++;
+    }
+  }
+  return { hist, expected: Math.PI * r * r / (TG.cx * kxw * TG.cy * kyw) };
+}
+function histStats(H) {
+  let n = 0, s = 0, maxC = 0;
+  let hot = 0;
+  for (let c = 1; c < 256; c++) if (H.hist[c]) { n += H.hist[c]; s += H.hist[c] * tempOf(c); maxC = c; if (c > 128) hot += H.hist[c]; }
+  return n ? { avg: s / n, max: tempOf(maxC), hot: hot / n, cover: Math.min(1, n / H.expected) } : null;
+}
+wells.forEach(w => { w.thist = circleHist(w.lat, w.lon, 30); });
+const termoOf = w => histStats(w.thist);
+const tempPopup = L.popup({ maxWidth: 280 });
+map.on('click', e => {
+  const c = codeAt(e.latlng.lat, e.latlng.lng);
+  tempPopup.setLatLng(e.latlng).setContent(c
+    ? `Termo snímka: <b>≈ ${fmt(tempOf(c), 1)} °C</b><br><span style="color:#777">odhad z farby, Hot Iron 22 – 35 °C, farba od ${fmt(tColor, 1)} °C</span>`
+    : 'Tu termo snímka nie je.').openOn(map);
+});
+
 // ---------- okruh 30 m okolo sond; prekryv susedných okruhov delí os medzi sondami (najbližšia sonda) ----------
 const ZONE_R = 30;
 map.createPane('zones').style.zIndex = 380;
@@ -360,22 +417,31 @@ zoneWells.forEach(w => {
   zoneWells.forEach(o => { if (o !== w) poly = clipCloser(poly, c, toXY(o.lat, o.lon)); });
   w.zone = L.polygon(poly.map(toLL), { pane: 'zones', renderer: zoneRenderer, color: '#ffffff', weight: 1.5, opacity: 0.85, fillOpacity: 0.55, interactive: false }).addTo(zoneLayer);
 });
+const TEMP_STOPS = ['#f3e9fc', '#cfa9ee', '#a066d8', '#6f2fb3', '#431677'];
 const ZONE_VARS = {
-  lfg: { get: s => s.tLfg, min: 13, max: 22, stops: ['#f3e9fc', '#cfa9ee', '#a066d8', '#6f2fb3', '#431677'], ticks: ['13 °C', '17,5 °C', '22 °C'] },
-  co: { get: s => s.co, min: 0, max: 1000, stops: ['#dff5f0', '#9fe0d2', '#4fb9a6', '#1d8a79', '#0b5249'], ticks: ['0', '500', '1 000 ppm'] },
+  lfg: { get: w => w.s.tLfg, min: 13, max: 22, stops: TEMP_STOPS, ticks: ['13 °C', '17,5 °C', '22 °C'] },
+  co: { get: w => w.s.co, min: 0, max: 1000, stops: ['#dff5f0', '#9fe0d2', '#4fb9a6', '#1d8a79', '#0b5249'], ticks: ['0', '500', '1 000 ppm'] },
+  // priemery sa líšia len o pár stupňov, preto stupnica podľa rozsahu priemerov (zaokrúhlené na 0,5 °C)
+  termo: { get: w => { const t = termoOf(w); return t ? t.avg : null; }, stops: TEMP_STOPS, dynamic: true, note: 'Priemer termo snímky z celého kruhu 30 m okolo sondy. Stupnica je roztiahnutá na rozsah priemerov.' },
 };
 let zoneVar = 'lfg';
 function paintZones() {
   const v = ZONE_VARS[zoneVar];
+  if (v.dynamic) {
+    const vals = zoneWells.map(w => v.get(w)).filter(x => x != null);
+    v.min = Math.floor(Math.min(...vals) * 2) / 2; v.max = Math.max(v.min + 0.5, Math.ceil(Math.max(...vals) * 2) / 2);
+    v.ticks = [v.min, (v.min + v.max) / 2, v.max].map((x, i) => fmt(x, 1) + (i !== 1 ? ' °C' : ''));
+  }
   zoneWells.forEach(w => {
-    const val = v.get(w.s);
+    const val = v.get(w);
     w.zone.setStyle(val == null
       ? { fillColor: '#8a8f93', fillOpacity: 0.3, dashArray: '4 4' }
       : { fillColor: lerpHex(v.stops, (val - v.min) / (v.max - v.min)), fillOpacity: 0.55, dashArray: null });
   });
-  const missing = zoneWells.filter(w => v.get(w.s) == null).map(w => w.name);
+  const missing = zoneWells.filter(w => v.get(w) == null).map(w => w.name);
   document.getElementById('zoneLegend').innerHTML = `<div class="ramp" style="background:${gradCss(v.stops)}"></div><div class="ramp-ticks">${v.ticks.map(t => `<span>${t}</span>`).join('')}</div>` +
-    (missing.length ? `<p class="note" style="margin-top:4px">Sivý prerušovaný okruh: bez merania (${missing.join(', ')}).</p>` : '');
+    (v.note ? `<p class="note" style="margin-top:4px">${v.note}</p>` : '') +
+    (missing.length ? `<p class="note" style="margin-top:4px">Sivý prerušovaný okruh: bez údajov (${missing.join(', ')}).</p>` : '');
 }
 paintZones();
 seg('segZone', v => { zoneVar = v; paintZones(); });
@@ -410,7 +476,7 @@ function drawDetections() {
   detLayer.clearLayers();
   const vis = r => r.ch4 >= thr && (recShow === 'all' || r.src === Number(recShow));
   allDet.filter(vis).sort((a, b) => a.ch4 - b.ch4).forEach(r => {
-    r.marker = new ShapeMarker([r.lat, r.lon], { shape: shapeOf(r.src), radius: 4 + 9 * ch4S(r.ch4), color: REC_STROKE[r.src % 3], weight: r.src ? 1.5 : 1, opacity: r.src ? 0.95 : 0.7, fillColor: ch4Color(r.ch4), fillOpacity: 0.9 })
+    r.marker = new ShapeMarker([r.lat, r.lon], { shape: shapeOf(r.src), bubblingMouseEvents: false, radius: 4 + 9 * ch4S(r.ch4), color: REC_STROKE[r.src % 3], weight: r.src ? 1.5 : 1, opacity: r.src ? 0.95 : 0.7, fillColor: ch4Color(r.ch4), fillOpacity: 0.9 })
       .bindPopup(popupHtml(r)).addTo(detLayer);
   });
   document.getElementById('thrVal').textContent = thr ? `${fmt(thr)} ppm·m` : 'všetky';
@@ -439,12 +505,18 @@ chk('chkDet', on => on ? detLayer.addTo(map) : map.removeLayer(detLayer));
 drawDetections();
 
 // ---------- značky šachiet a tabuľka ----------
+const termoLine = w => {
+  const t = termoOf(w);
+  return `<br>Termo snímka do 30 m: ` + (t ? `Ø <b>${fmt(t.avg, 1)} °C</b>, max. ${fmt(t.max, 1)} °C` +
+    `<br>nad ${fmt(tColor, 1)} °C (farebné): ${fmt(t.hot * 100, 1)} % plochy` + (t.cover < 0.9 ? ` · snímka pokrýva ${fmt(t.cover * 100)} % kruhu` : '') : 'mimo snímky');
+};
 const wellLayer = L.layerGroup().addTo(map);
 wells.forEach(w => {
   const badge = w.s ? `<span class="wco">${w.s.tLfg != null ? fmt(w.s.tLfg, 1) + ' °C · ' : ''}CO ${fmt(w.s.co)}</span>` : '';
   const icon = L.divIcon({ className: '', iconSize: [24, 24], iconAnchor: [12, 12], popupAnchor: [0, -12], html: `<div class="well${w.ot ? ' ot' : ''}"><div class="wn">${w.no}</div>${badge}</div>` });
-  w.marker = L.marker([w.lat, w.lon], { icon, zIndexOffset: 500, title: w.name, keyboard: false }).bindPopup(
+  w.marker = L.marker([w.lat, w.lon], { icon, zIndexOffset: 500, title: w.name, keyboard: false }).bindPopup(() =>
     `<b>${w.name}</b> ${w.ot ? 'ventil' : 'odplyňovacia šachta'}` +
+    termoLine(w) +
     (w.s ? `<br><span style="color:#777">Senec V/2026 (+${w.s.timer} min):</span>` +
       `<br>T LFG <b>${w.s.tLfg != null ? fmt(w.s.tLfg, 1) + ' °C' : 'nemerané'}</b> · CO <b>${fmt(w.s.co)} ppm</b>` + (w.s.coOd != null ? ` (od–do ${fmt(w.s.coOd)}–${fmt(w.s.coDo)})` : '') +
       `<br>T vrt ${w.s.tWell != null ? fmt(w.s.tWell, 1) + ' °C' : '–'} · T vzduch ${fmt(w.s.tAir, 1)} °C · T meteo ${fmt(w.s.tMeteo, 1)} °C` +
@@ -456,11 +528,15 @@ wells.forEach(w => {
 });
 chk('chkWells', on => on ? wellLayer.addTo(map) : map.removeLayer(wellLayer));
 const wellRows = document.getElementById('wellRows');
-wellRows.innerHTML = wells.map((w, i) =>
-  `<tr tabindex="0" data-i="${i}"${w.ot && !wells[i - 1].ot ? ' class="sep"' : ''}><td>${w.name}</td>` +
-  `<td class="${w.s && w.s.tLfg >= 17 ? 'hi' : ''}">${w.s && w.s.tLfg != null ? fmt(w.s.tLfg, 1) : '–'}</td>` +
-  `<td class="${w.s && w.s.co >= 500 ? 'hi' : ''}">${w.s ? fmt(w.s.co) : '–'}</td>` +
-  `<td>${w.s ? fmt(w.s.co2025, 1) : '–'}</td><td>${w.droneMax !== null ? fmt(w.droneMax) : '–'}</td></tr>`).join('');
+function renderWellRows() {
+  wellRows.innerHTML = wells.map((w, i) => {
+    const t = termoOf(w);
+    return `<tr tabindex="0" data-i="${i}"${w.ot && !wells[i - 1].ot ? ' class="sep"' : ''}><td>${w.name}</td>` +
+      `<td class="${w.s && w.s.tLfg >= 17 ? 'hi' : ''}">${w.s && w.s.tLfg != null ? fmt(w.s.tLfg, 1) : '–'}</td>` +
+      `<td class="${w.s && w.s.co >= 500 ? 'hi' : ''}">${w.s ? fmt(w.s.co) : '–'}</td>` +
+      `<td>${t ? fmt(t.avg, 1) : '–'}</td><td>${w.droneMax !== null ? fmt(w.droneMax) : '–'}</td></tr>`;
+  }).join('');
+}
 const openWell = e => {
   const tr = e.target.closest('tr'); if (!tr) return;
   const w = wells[Number(tr.dataset.i)];
@@ -506,6 +582,20 @@ document.getElementById('termoOp').addEventListener('input', e => {
   termo.setOpacity(e.target.value / 100); document.getElementById('termoOpVal').textContent = e.target.value + ' %';
 });
 applyClip(); window.addEventListener('load', applyClip);
+
+// ---------- hranica farby v palete Hot Iron ----------
+const tColorEl = document.getElementById('tColor');
+function refreshTemps() {
+  document.getElementById('tColorVal').textContent = `${fmt(tColor, 1)} °C`;
+  const b = (tColor - T_MIN) / (T_MAX - T_MIN) * 100, at = k => (b + (100 - b) * k).toFixed(1) + '%';
+  document.getElementById('termoRamp').style.background =
+    `linear-gradient(90deg, #262626 0%, #d4d4d4 ${b.toFixed(1)}%, #9b0f2e ${b.toFixed(1)}%, #e2401c ${at(0.35)}, #f3a01f ${at(0.65)}, #f2e24a ${at(0.85)}, #c2dc5a 100%)`;
+  renderWellRows();
+  if (zoneVar === 'termo') paintZones();
+  wells.forEach(w => { if (w.marker.isPopupOpen()) w.marker.getPopup().update(); });
+}
+tColorEl.addEventListener('input', () => { tColor = Number(tColorEl.value); refreshTemps(); });
+refreshTemps();
 </script>
 </body>
 </html>
