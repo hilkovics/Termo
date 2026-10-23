@@ -50,6 +50,6 @@ Add-Type -Path .\scripts\TifDown.cs -ReferencedAssemblies System.Drawing
 ## Poznámky
 
 - **Súradnice v PDF STELLA** sú stupne a minúty bez oddeľovačov: `4814785` = 48° 14,785′ = 48,24642° N, `1722969` = 17° 22,969′ = 17,38282° E.
-- **Termo snímka** je zafarbený obrázok bez teplotnej stupnice. Poradie farieb (sivá → červená → žltá → zelená) je odhad.
+- **Termo snímka** je zafarbený obrázok (paleta Hot Iron) s rozsahom teplôt 22 – 35 °C. Chladnejšie miesta sú šedé, najteplejšie zafarbené od červenej po žltú. Stupnica v snímke nie je, preto sú teploty medzi krajmi len približné.
 - **CO 1 000 ppm** pri sondách 2 a 15 je pravdepodobne horná hranica meracieho prístroja.
 - **Tabuľka č. 2 (1. 12. 2025)** v PDF STELLA obsahuje len hlavičku, riadky chýbajú.
