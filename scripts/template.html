@@ -54,7 +54,7 @@ header.top .meta { color: var(--fg2); font-size: 13px; }
 .app { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; align-items: start; }
 .col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
-#map { position: sticky; top: 16px; height: clamp(460px, calc(100vh - 90px), 980px); border-radius: 10px; border: 1px solid var(--line); overflow: hidden; background: var(--track); }
+#map { position: relative; height: clamp(460px, calc(100vh - 90px), 980px); border-radius: 10px; border: 1px solid var(--line); overflow: hidden; background: var(--track); }
 input[type=range] { width: 100%; accent-color: var(--accent); font: inherit; }
 
 /* bočný panel */
@@ -129,6 +129,16 @@ input[type=range] { width: 100%; accent-color: var(--accent); font: inherit; }
 .wtable tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .wtable td.hi { font-weight: 600; color: var(--fg); }
 .wtable tr.sep td { border-top: 2px solid var(--line); }
+/* rozbaľovací panel pod mapou */
+.fold > summary { list-style: none; display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; padding: 12px 36px 12px 12px; cursor: pointer; position: relative; }
+.fold > summary::-webkit-details-marker { display: none; }
+.fold > summary::after { content: ""; position: absolute; right: 16px; top: 16px; width: 7px; height: 7px; border-right: 2px solid var(--fg2); border-bottom: 2px solid var(--fg2); transform: rotate(45deg); transition: transform .15s; }
+.fold[open] > summary::after { transform: rotate(-135deg); top: 19px; }
+.fold > summary:hover h2 { color: var(--fg); }
+.fold > summary h2 { font: 600 13px var(--font-display); margin: 0; text-transform: uppercase; letter-spacing: 0.06em; color: var(--fg2); }
+.fold > .box { padding-top: 0; }
+.fold .wtable { font-size: 13px; }
+.fold .wtable td, .fold .wtable th { padding: 5px 8px; }
 
 /* termo snímka a opona */
 .termo-ramp { height: 10px; border-radius: 3px; background: linear-gradient(90deg, #2b2b2b, #9a9a9a 38%, #c81e14 40%, #f0641e 58%, #f5d21e 80%, #b4d23c); }
@@ -158,6 +168,18 @@ input[type=range] { width: 100%; accent-color: var(--accent); font: inherit; }
 <main class="app">
   <section class="col">
     <div id="map" role="region" aria-label="Mapa skládky s meraniami"></div>
+    <details class="panel fold" open>
+      <summary><h2>Šachty a ventily</h2><span class="lbl">kliknutím na riadok sa mapa presunie na šachtu</span></summary>
+      <div class="box">
+        <div class="wtable-wrap">
+          <table class="wtable">
+            <thead><tr><th>Šachta</th><th>T LFG °C<br>V/2026</th><th>CO ppm<br>V/2026</th><th>CH₄ %<br>6/2025</th><th>CO ppm<br>6/2025</th><th>Termo Ø °C<br>30 m</th><th>Termo max<br>°C</th><th>Farebné<br>% plochy</th><th>Dron CH₄<br>do 10 m</th></tr></thead>
+            <tbody id="wellRows"></tbody>
+          </table>
+        </div>
+        <p class="note">Polohy sú z PDF STELLA, súradnice v stupňoch a minútach (4814785 = 48° 14,785′). Teplota LFG a CO V/2026 sú z merania Senec V/2026, CH₄ a CO 6/2025 z merania 6. 6. 2025 v PDF STELLA. Okruh 30 m okolo sondy je pri susedných sondách rozdelený v polovici vzdialenosti, každé miesto patrí najbližšej sonde. „Termo“ stĺpce sú z termo snímky v celom kruhu 30 m okolo šachty, odhadnuté z farby; „Farebné“ je podiel plochy nad hranicou farby. „Dron CH₄“ je najvyššia hodnota zo všetkých záznamov do 10 m od šachty v ppm·m. CO 1 000 ppm je pravdepodobne horná hranica prístroja.</p>
+      </div>
+    </details>
   </section>
 
   <aside class="col">
@@ -173,13 +195,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); font: inherit; }
         <div class="seg" id="segZone"><button type="button" data-v="lfg" aria-pressed="true">Teplota LFG</button><button type="button" data-v="co" aria-pressed="false">CO</button><button type="button" data-v="termo" aria-pressed="false">Termo Ø</button></div>
       </div>
       <div id="zoneLegend"></div>
-      <div class="wtable-wrap">
-        <table class="wtable">
-          <thead><tr><th>Šachta</th><th>T LFG °C<br>V/2026</th><th>CO ppm<br>V/2026</th><th>Termo Ø °C<br>30 m</th><th>Dron CH₄<br>do 10 m</th></tr></thead>
-          <tbody id="wellRows"></tbody>
-        </table>
-      </div>
-      <p class="note">Polohy sú z PDF STELLA, súradnice v stupňoch a minútach (4814785 = 48° 14,785′). Teplota LFG a CO sú z merania Senec V/2026. Okruh 30 m okolo sondy je pri susedných sondách rozdelený v polovici vzdialenosti, každé miesto patrí najbližšej sonde. „Termo Ø“ je priemerná teplota povrchu z termo snímky v celom kruhu 30 m okolo šachty, odhadnutá z farby. „Dron CH₄“ je najvyššia hodnota zo všetkých záznamov do 10 m od šachty v ppm·m. CO 1 000 ppm je pravdepodobne horná hranica prístroja.</p>
+      <p class="note">Hodnoty všetkých šachiet sú v tabuľke pod mapou.</p>
     </div>
 
     <div class="panel box">
@@ -713,7 +729,9 @@ function renderWellRows() {
     return `<tr tabindex="0" data-i="${i}"${w.ot && !wells[i - 1].ot ? ' class="sep"' : ''}><td>${w.name}</td>` +
       `<td class="${w.s && w.s.tLfg >= 17 ? 'hi' : ''}">${w.s && w.s.tLfg != null ? fmt(w.s.tLfg, 1) : '–'}</td>` +
       `<td class="${w.s && w.s.co >= 500 ? 'hi' : ''}">${w.s ? fmt(w.s.co) : '–'}</td>` +
-      `<td>${t ? fmt(t.avg, 1) : '–'}</td><td>${w.droneMax !== null ? fmt(w.droneMax) : '–'}</td></tr>`;
+      `<td>${fmtPct(w.ch4)}</td><td>${fmt(w.co)}</td>` +
+      `<td>${t ? fmt(t.avg, 1) : '–'}</td><td>${t ? fmt(t.max, 1) : '–'}</td><td>${t ? fmt(t.hot * 100, 1) : '–'}</td>` +
+      `<td class="${w.droneMax >= 5000 ? 'hi' : ''}">${w.droneMax !== null ? fmt(w.droneMax) : '–'}</td></tr>`;
   }).join('');
 }
 const openWell = e => {
