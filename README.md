@@ -52,12 +52,19 @@ Add-Type -Path .\scripts\TifDown.cs -ReferencedAssemblies System.Drawing
 [TifDown]::Run("C:\cesta\result.tif", 8, "$PWD\termo-result.png")
 ```
 
+Jeden súbor na zdieľanie vytvorí `scripts/standalone.ps1`. Do hotového `index.html` vloží termo snímku a knižnicu Leaflet a uloží `dist/Skladka-Senec.html` (asi 11 MB, v gite nie je). Súbor stačí otvoriť v prehliadači, bez servera a bez ďalších súborov. Podkladové mapy a písma sa načítavajú z internetu, bez pripojenia funguje mapa bez podkladu.
+
+```powershell
+& .\scripts\standalone.ps1
+```
+
 Ďalšie skripty:
 
 - `tiffinfo.ps1` vypíše hlavičku a georeferencovanie TIF.
 - `xlsx.ps1` vypíše obsah XLSX bez Excelu.
 - `HueStats.cs` vyhodnotí farby termo snímky.
 - `serve.ps1` spustí jednoduchý lokálny server.
+- `standalone.ps1` vytvorí jeden súbor na zdieľanie (pozri vyššie).
 
 ## Prieniky medzi letmi
 
