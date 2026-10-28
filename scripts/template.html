@@ -95,6 +95,24 @@ input[type=range] { width: 100%; accent-color: var(--accent); font: inherit; }
 .recleg div.off { opacity: 0.4; }
 .recleg b { font: 500 12px var(--font-data); color: var(--fg); }
 
+/* prieniky medzi letmi */
+.btn { font: 500 12px var(--font-body); border: 1px solid var(--line); background: var(--panel); color: var(--fg); padding: 5px 10px; border-radius: 8px; cursor: pointer; }
+.btn:hover { background: var(--bg); }
+.chk svg { flex: none; }
+.mtx th { text-align: center; white-space: nowrap; }
+.mtx th:first-child { text-align: left; }
+.mtx th svg { vertical-align: -2px; }
+.mtx td { text-align: center; padding: 0; }
+.mtx td:first-child { padding: 4px; white-space: nowrap; font-family: var(--font-body); }
+.mtx td.dg { color: var(--muted); padding: 4px; }
+.mtx td button { width: 100%; font: inherit; color: var(--fg); background: transparent; border: 0; padding: 5px 4px; cursor: pointer; }
+.mtx td button:hover { outline: 1px solid var(--accent); outline-offset: -1px; }
+.mtx td button.on { font-weight: 600; box-shadow: inset 0 0 0 2px var(--accent); }
+.hz li button { grid-template-columns: 22px minmax(0,1fr); }
+.hzn { width: 22px; height: 22px; border-radius: 50%; color: #111; font: 700 11px/1 var(--font-body); display: grid; place-items: center; box-shadow: 0 0 0 1.5px rgba(0,0,0,.6); }
+.hz .recs { display: flex; flex-wrap: wrap; gap: 2px 10px; font: 12px var(--font-data); color: var(--fg2); }
+.hz .recs svg { vertical-align: -2px; margin-right: 2px; }
+
 /* odplyňovacie šachty a ventily */
 .well { position: relative; width: 24px; height: 24px; }
 .well .wn { width: 24px; height: 24px; border-radius: 50%; background: #ffffff; color: #111; border: 2px solid #111; font: 700 11px/1 var(--font-body); display: grid; place-items: center; box-shadow: 0 1px 4px rgba(0,0,0,.55); }
@@ -161,7 +179,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); font: inherit; }
           <tbody id="wellRows"></tbody>
         </table>
       </div>
-      <p class="note">Polohy sú z PDF STELLA, súradnice v stupňoch a minútach (4814785 = 48° 14,785′). Teplota LFG a CO sú z merania Senec V/2026. Okruh 30 m okolo sondy je pri susedných sondách rozdelený v polovici vzdialenosti, každé miesto patrí najbližšej sonde. „Termo Ø“ je priemerná teplota povrchu z termo snímky v celom kruhu 30 m okolo šachty, odhadnutá z farby. „Dron CH₄“ je najvyššia hodnota z oboch záznamov do 10 m od šachty v ppm·m. CO 1 000 ppm je pravdepodobne horná hranica prístroja.</p>
+      <p class="note">Polohy sú z PDF STELLA, súradnice v stupňoch a minútach (4814785 = 48° 14,785′). Teplota LFG a CO sú z merania Senec V/2026. Okruh 30 m okolo sondy je pri susedných sondách rozdelený v polovici vzdialenosti, každé miesto patrí najbližšej sonde. „Termo Ø“ je priemerná teplota povrchu z termo snímky v celom kruhu 30 m okolo šachty, odhadnutá z farby. „Dron CH₄“ je najvyššia hodnota zo všetkých záznamov do 10 m od šachty v ppm·m. CO 1 000 ppm je pravdepodobne horná hranica prístroja.</p>
     </div>
 
     <div class="panel box">
@@ -179,6 +197,35 @@ input[type=range] { width: 100%; accent-color: var(--accent); font: inherit; }
       </div>
       <ul class="toplist" id="toplist"></ul>
       <p class="note" id="note"></p>
+    </div>
+
+    <div class="panel box">
+      <h2>Prieniky medzi letmi</h2>
+      <label class="chk"><input type="checkbox" id="chkHits" checked> Zobraziť zóny prieniku</label>
+      <div class="chks" id="hitFlights"></div>
+      <div class="row"><span class="lbl">Zóna musí mať</span>
+        <div class="seg" id="segNeed"><button type="button" data-v="2" aria-pressed="true">Aspoň 2 lety</button><button type="button" data-v="all" aria-pressed="false">Všetky vybrané</button></div>
+      </div>
+      <div>
+        <div class="row"><label class="lbl" for="hitR">Body letov od seba do</label><span class="num" id="hitRVal"></span></div>
+        <input type="range" id="hitR" min="1" max="20" step="1" value="5">
+      </div>
+      <div class="row"><span class="lbl">Prah CH₄</span>
+        <div class="seg" id="segHitThr"><button type="button" data-v="abs" aria-pressed="true">ppm·m</button><button type="button" data-v="pct" aria-pressed="false">Najvyššie % letu</button></div>
+      </div>
+      <div>
+        <div class="row"><label class="lbl" for="hitThr" id="hitThrLbl"></label><span class="num" id="hitThrVal"></span></div>
+        <input type="range" id="hitThr" min="0" max="3000" step="50" value="1000">
+      </div>
+      <div class="wtable-wrap"><table class="wtable mtx" id="hitMatrix"></table></div>
+      <p class="note" id="hitMatrixNote"></p>
+      <ol class="toplist hz" id="hitList"></ol>
+      <p class="note" id="hitNote"></p>
+      <div class="row">
+        <label class="chk"><input type="checkbox" id="chkOnlyHits"> Body CH₄ len v zónach</label>
+        <button type="button" class="btn" id="hitCsv">Stiahnuť zóny (CSV)</button>
+      </div>
+      <p class="note">Zóna prieniku je miesto, kde CH₄ nad prahom zachytili aspoň dva lety (alebo všetky vybrané) v bodoch, ktoré sú od seba najviac na zvolenú vzdialenosť. Body, ktoré takto susedia, sa spájajú do jednej zóny. Lety mali rôznu citlivosť a výšku, preto prah „najvyššie % letu“ berie z každého letu rovnaký podiel jeho najsilnejších bodov. Zóny sú zoradené podľa počtu letov a potom podľa hodnoty, ktorú prekročil každý z nich.</p>
     </div>
 
     <div class="panel box">
@@ -309,7 +356,7 @@ const maxT = withT.reduce((m, w) => w.s.tLfg > m.s.tLfg ? w : m, withT[0]);
 const avgT = withT.reduce((a, w) => a + w.s.tLfg, 0) / withT.length;
 const maxCo = Math.max(...zoneWells.map(w => w.s.co));
 const coHigh = zoneWells.filter(w => w.s.co >= 500);
-document.getElementById('meta').textContent = `CH₄ z dronu 19. 8. 2026 (záznamy ${recLabels.join(' a ')}) · sondy Senec V/2026 · polohy šachiet STELLA`;
+document.getElementById('meta').textContent = `CH₄ z dronu 19. 8. 2026 (záznamy ${recLabels.slice(0, -1).join(', ')} a ${recLabels[recLabels.length - 1]}) · sondy Senec V/2026 · polohy šachiet STELLA`;
 [
   ['Max. CH₄ dron', fmt(maxCh4.ch4), 'ppm·m', `${maxCh4.time}, záznam ${maxCh4.rec}`],
   ['CH₄ nad 1 000', fmt(allDet.filter(r => r.ch4 >= 1000).length), 'bodov', `z ${fmt(allDet.length)} detekcií`],
@@ -449,7 +496,7 @@ chk('chkZones', on => on ? zoneLayer.addTo(map) : map.removeLayer(zoneLayer));
 
 // ---------- body CH4 na mape: tvar = záznam, farba = ppm·m ----------
 const detLayer = L.layerGroup().addTo(map);
-let thr = 1000, recShow = 'all';
+let thr = 1000, recShow = 'all', onlyHits = false;
 const SHAPES = ['circle', 'diamond', 'square'];
 const REC_STROKE = ['#111111', '#ffffff', '#111111'];
 const shapeOf = src => SHAPES[src % SHAPES.length];
@@ -469,12 +516,12 @@ const shapeSvg = (src, fill) => {
   const body = s === 'circle' ? `<circle r="5" ${st}/>` : s === 'diamond' ? `<path d="M0,-6 L6,0 L0,6 L-6,0Z" ${st}/>` : `<rect x="-4.5" y="-4.5" width="9" height="9" ${st}/>`;
   return `<svg width="13" height="13" viewBox="-7 -7 14 14" aria-hidden="true">${body}</svg>`;
 };
-document.getElementById('segRec').innerHTML = `<button type="button" data-v="all" aria-pressed="true">Oba</button>` +
+document.getElementById('segRec').innerHTML = `<button type="button" data-v="all" aria-pressed="true">Všetky</button>` +
   recLabels.map((l, i) => `<button type="button" data-v="${i}" aria-pressed="false">${shapeSvg(i, '#f4743f')}${l.slice(0, 5)}</button>`).join('');
 const popupHtml = r => `CH₄ <b>${fmt(r.ch4)} ppm·m</b><br>${r.time} · záznam ${r.rec}<br>výška ${fmt(r.alt, 1)} m · dosah lasera ${fmt(r.dist, 1)} m` + (r.photo ? `<br><span style="color:#777">${r.photo}</span>` : '');
 function drawDetections() {
   detLayer.clearLayers();
-  const vis = r => r.ch4 >= thr && (recShow === 'all' || r.src === Number(recShow));
+  const vis = r => r.ch4 >= thr && (recShow === 'all' || r.src === Number(recShow)) && (!onlyHits || r.hz);
   allDet.filter(vis).sort((a, b) => a.ch4 - b.ch4).forEach(r => {
     r.marker = new ShapeMarker([r.lat, r.lon], { shape: shapeOf(r.src), bubblingMouseEvents: false, radius: 4 + 9 * ch4S(r.ch4), color: REC_STROKE[r.src % 3], weight: r.src ? 1.5 : 1, opacity: r.src ? 0.95 : 0.7, fillColor: ch4Color(r.ch4), fillOpacity: 0.9 })
       .bindPopup(popupHtml(r)).addTo(detLayer);
@@ -503,6 +550,138 @@ seg('segRec', v => { recShow = v; drawDetections(); });
 document.getElementById('thr').addEventListener('input', e => { thr = Number(e.target.value); drawDetections(); });
 chk('chkDet', on => on ? detLayer.addTo(map) : map.removeLayer(detLayer));
 drawDetections();
+
+// ---------- prieniky medzi letmi: miesta, kde CH4 nad prahom zachytilo viac letov ----------
+const pl = (n, one, few, many) => n === 1 ? one : n >= 2 && n <= 4 ? few : many;
+const hitColor = n => n >= 3 ? '#f0a3ff' : '#4fe3f2';
+const hitSel = new Set(recLabels.map((_, i) => i));
+let hitNeed = '2', hitR = 5, hitThrMode = 'abs', hitThrAbs = 1000, hitThrPct = 10, hitZones = [], hitThrs = [], hitPair = [];
+allDet.forEach(r => { [r.x, r.y] = toXY(r.lat, r.lon); });
+const recVals = recLabels.map((_, i) => allDet.filter(r => r.src === i).map(r => r.ch4).sort((a, b) => a - b));
+// prah letu: absolútny, alebo najnižšia hodnota zo zvoleného percenta najvyšších bodov letu
+const thrOfRec = i => hitThrMode === 'abs' ? hitThrAbs : recVals[i][Math.min(recVals[i].length - 1, Math.floor(recVals[i].length * (1 - hitThrPct / 100)))];
+// mriežka s bunkou R metrov: susedia bodu do R sú v 3 × 3 bunkách okolo neho
+function gridOf(pts, R) {
+  const g = new Map(), key = (x, y) => Math.floor(x / R) + ',' + Math.floor(y / R);
+  pts.forEach(p => { const k = key(p.x, p.y); g.has(k) ? g.get(k).push(p) : g.set(k, [p]); });
+  return p => {
+    const out = [], cx = Math.floor(p.x / R), cy = Math.floor(p.y / R);
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++)
+      (g.get((cx + i) + ',' + (cy + j)) || []).forEach(q => { if ((q.x - p.x) ** 2 + (q.y - p.y) ** 2 <= R * R) out.push(q); });
+    return out;
+  };
+}
+function computeHits() {
+  hitThrs = recLabels.map((_, i) => thrOfRec(i));
+  allDet.forEach(r => { r.hz = null; });
+  const pts = allDet.filter(r => r.ch4 >= hitThrs[r.src]);
+  const near = gridOf(pts, hitR);
+  pts.forEach(p => { p.recsNear = new Set(near(p).map(q => q.src)); });
+  // dvojice letov: podiel bodov letu a, ktoré majú do R bod letu b
+  hitPair = recLabels.map((_, a) => { const A = pts.filter(p => p.src === a); return recLabels.map((_, b) => ({ n: A.length, f: A.length ? A.filter(p => p.recsNear.has(b)).length / A.length : 0 })); });
+  const sel = [...hitSel].sort((a, b) => a - b), need = hitNeed === 'all' ? sel.length : 2;
+  const hits = sel.length < 2 ? [] : pts.filter(p => hitSel.has(p.src) && sel.filter(s => p.recsNear.has(s)).length >= need);
+  // susediace body prieniku spojí do zón (union-find)
+  const nearHit = gridOf(hits, hitR), parent = new Map(hits.map(p => [p, p]));
+  const find = p => { while (parent.get(p) !== p) { parent.set(p, parent.get(parent.get(p))); p = parent.get(p); } return p; };
+  hits.forEach(p => nearHit(p).forEach(q => { const a = find(p), b = find(q); if (a !== b) parent.set(a, b); }));
+  const groups = new Map();
+  hits.forEach(p => { const k = find(p); groups.has(k) ? groups.get(k).push(p) : groups.set(k, [p]); });
+  hitZones = [...groups.values()].map(m => {
+    const x = m.reduce((s, p) => s + p.x, 0) / m.length, y = m.reduce((s, p) => s + p.y, 0) / m.length, [lat, lon] = toLL([x, y]);
+    const recs = sel.map(i => {
+      const a = m.filter(p => p.src === i); if (!a.length) return null;
+      const t = a.map(p => p.time).sort();
+      return { i, n: a.length, max: Math.max(...a.map(p => p.ch4)), first: t[0], last: t[t.length - 1] };
+    }).filter(Boolean);
+    const z = { lat, lon, pts: m, recs, rad: Math.max(3, Math.max(...m.map(p => Math.hypot(p.x - x, p.y - y))) + 1.5), max: Math.max(...m.map(p => p.ch4)), floor: Math.min(...recs.map(r => r.max)) };
+    z.well = wells.reduce((b, w) => hav(w, z) < hav(b, z) ? w : b, wells[0]); z.wellD = hav(z.well, z);
+    return z;
+  }).sort((a, b) => b.recs.length - a.recs.length || b.floor - a.floor);
+  hitZones.forEach((z, k) => { z.id = k + 1; z.pts.forEach(p => { p.hz = z; }); });
+}
+map.createPane('hits').style.zIndex = 390;
+const hitRenderer = L.svg({ pane: 'hits' });
+const hitLayer = L.layerGroup().addTo(map);
+const recRange = r => r.first === r.last ? r.first : `${r.first}–${r.last}`;
+const zonePopup = z => `<b>Zóna prieniku ${z.id}</b> · ${z.recs.length} ${pl(z.recs.length, 'let', 'lety', 'letov')}<br>` +
+  z.recs.map(r => `${shapeSvg(r.i, ch4Color(r.max))} ${recLabels[r.i].slice(0, 5)}: max. <b>${fmt(r.max)}</b> ppm·m, ${r.n} ${pl(r.n, 'bod', 'body', 'bodov')} (${recRange(r)})`).join('<br>') +
+  `<br>najbližšie ${z.well.name}, ${fmt(z.wellD)} m · priemer zóny ${fmt(2 * z.rad)} m` +
+  `<br><span style="color:#777">${z.lat.toFixed(5)} N, ${z.lon.toFixed(5)} E</span>`;
+function drawHits() {
+  hitLayer.clearLayers();
+  hitZones.forEach(z => {
+    const col = hitColor(z.recs.length);
+    z.circle = L.circle([z.lat, z.lon], { radius: z.rad, pane: 'hits', renderer: hitRenderer, color: col, weight: 2.5, dashArray: '6 4', fillColor: col, fillOpacity: 0.14, bubblingMouseEvents: false })
+      .bindPopup(() => zonePopup(z), { maxWidth: 320 }).addTo(hitLayer);
+    L.marker([z.lat + z.rad / 110574, z.lon], { icon: L.divIcon({ className: '', iconSize: [22, 22], iconAnchor: [11, 11], html: `<div class="hzn" style="background:${col}">${z.id}</div>` }), zIndexOffset: 400, keyboard: false, title: `Zóna prieniku ${z.id}` })
+      .on('click', () => z.circle.openPopup()).addTo(hitLayer);
+  });
+}
+const openZone = z => {
+  if (!map.hasLayer(hitLayer)) { document.getElementById('chkHits').checked = true; hitLayer.addTo(map); }
+  map.setView([z.lat, z.lon], Math.max(map.getZoom(), 19)); z.circle.openPopup();
+};
+const recName = i => `${shapeSvg(i, 'var(--fg2)')}${recLabels[i].slice(0, 5)}`;
+document.getElementById('hitFlights').innerHTML = recLabels.map((l, i) => `<label class="chk"><input type="checkbox" data-i="${i}" checked> ${shapeSvg(i, '#f4743f')} ${l}</label>`).join('');
+function renderHitPanel() {
+  document.getElementById('hitRVal').textContent = `${fmt(hitR)} m`;
+  document.getElementById('hitThrLbl').textContent = hitThrMode === 'abs' ? 'Body od' : 'Z každého letu najvyšších';
+  document.getElementById('hitThrVal').textContent = hitThrMode === 'abs' ? `${fmt(hitThrAbs)} ppm·m` : `${fmt(hitThrPct)} % bodov`;
+  document.getElementById('hitMatrix').innerHTML = `<thead><tr><th>Bod letu</th>${recLabels.map((_, b) => `<th>${recName(b)}</th>`).join('')}</tr></thead><tbody>` +
+    hitPair.map((row, a) => `<tr><td>${recName(a)}</td>` + row.map((c, b) => a === b
+      ? `<td class="dg" title="bodov nad prahom">${fmt(c.n)}</td>`
+      : `<td style="background:color-mix(in srgb, var(--accent) ${Math.round(c.f * 55)}%, transparent)"><button type="button" data-a="${a}" data-b="${b}" class="${hitSel.size === 2 && hitSel.has(a) && hitSel.has(b) ? 'on' : ''}" title="porovnať len ${recLabels[a]} a ${recLabels[b]}">${fmt(c.f * 100)} %</button></td>`).join('') + '</tr>').join('') + '</tbody>';
+  document.getElementById('hitMatrixNote').textContent = `Riadok ukazuje, koľko % bodov letu nad prahom má do ${fmt(hitR)} m bod letu v stĺpci. Na uhlopriečke je počet bodov nad prahom. Kliknutím na bunku porovnáte len tú dvojicu.` +
+    (hitThrMode === 'pct' ? ` Prah letov: ${recLabels.map((l, i) => `${l.slice(0, 5)} od ${fmt(hitThrs[i])}`).join(', ')} ppm·m.` : '');
+  const ul = document.getElementById('hitList'); ul.innerHTML = '';
+  hitZones.slice(0, 10).forEach(z => {
+    const li = document.createElement('li');
+    li.innerHTML = `<button type="button"><span class="hzn" style="background:${hitColor(z.recs.length)}">${z.id}</span><span>` +
+      `<span class="val">${z.recs.length} ${pl(z.recs.length, 'let', 'lety', 'letov')} · max. ${fmt(z.max)} ppm·m</span><br>` +
+      `<span class="recs">${z.recs.map(r => `<span>${shapeSvg(r.i, ch4Color(r.max))}${fmt(r.max)}</span>`).join('')}</span>` +
+      `<span class="sub">pri ${z.well.name}, ${fmt(z.wellD)} m · ${fmt(z.pts.length)} ${pl(z.pts.length, 'bod', 'body', 'bodov')}</span></span></button>`;
+    li.firstChild.addEventListener('click', () => openZone(z));
+    ul.appendChild(li);
+  });
+  const nHit = hitZones.reduce((s, z) => s + z.pts.length, 0);
+  document.getElementById('hitNote').textContent = hitSel.size < 2 ? 'Vyberte aspoň dva lety.'
+    : hitZones.length ? `${fmt(hitZones.length)} ${pl(hitZones.length, 'zóna', 'zóny', 'zón')} prieniku, spolu ${fmt(nHit)} ${pl(nHit, 'bod', 'body', 'bodov')}` + (hitZones.length > 10 ? ', v zozname prvých 10.' : '.') + ' Kliknutím na zónu sa mapa presunie na ňu.'
+    : 'Pri tomto nastavení sa lety neprekrývajú. Zväčšite vzdialenosť alebo znížte prah.';
+}
+function updateHits() { computeHits(); drawHits(); renderHitPanel(); if (onlyHits) drawDetections(); }
+document.getElementById('hitFlights').addEventListener('change', e => { const i = Number(e.target.dataset.i); e.target.checked ? hitSel.add(i) : hitSel.delete(i); updateHits(); });
+document.getElementById('hitMatrix').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  hitSel.clear(); hitSel.add(Number(b.dataset.a)); hitSel.add(Number(b.dataset.b));
+  document.querySelectorAll('#hitFlights input').forEach(x => { x.checked = hitSel.has(Number(x.dataset.i)); });
+  updateHits();
+});
+seg('segNeed', v => { hitNeed = v; updateHits(); });
+document.getElementById('hitR').addEventListener('input', e => { hitR = Number(e.target.value); updateHits(); });
+const hitThrEl = document.getElementById('hitThr');
+seg('segHitThr', v => {
+  hitThrMode = v;
+  Object.assign(hitThrEl, v === 'abs' ? { min: 0, max: 3000, step: 50 } : { min: 1, max: 50, step: 1 });
+  hitThrEl.value = v === 'abs' ? hitThrAbs : hitThrPct;
+  updateHits();
+});
+hitThrEl.addEventListener('input', () => { if (hitThrMode === 'abs') hitThrAbs = Number(hitThrEl.value); else hitThrPct = Number(hitThrEl.value); updateHits(); });
+chk('chkHits', on => on ? hitLayer.addTo(map) : map.removeLayer(hitLayer));
+chk('chkOnlyHits', on => { onlyHits = on; drawDetections(); });
+document.getElementById('hitCsv').addEventListener('click', () => {
+  const dec = (v, d) => v.toFixed(d).replace('.', ',');
+  const head = ['zona', 'pocet_letov', 'lat', 'lon', 'polomer_m', 'max_ppm_m', 'najblizsia_sachta', 'vzdialenost_m', ...recLabels.flatMap(l => [`max_${l}`, `body_${l}`, `cas_${l}`])];
+  const lines = hitZones.map(z => [z.id, z.recs.length, dec(z.lat, 6), dec(z.lon, 6), dec(z.rad, 1), z.max, z.well.name, dec(z.wellD, 1),
+    ...recLabels.flatMap((_, i) => { const r = z.recs.find(x => x.i === i); return r ? [r.max, r.n, recRange(r)] : ['', '', '']; })].join(';'));
+  const set = `# lety ${[...hitSel].map(i => recLabels[i]).join(', ')}; ${hitNeed === 'all' ? 'všetky vybrané' : 'aspoň 2 lety'}; do ${hitR} m; prah ` +
+    (hitThrMode === 'abs' ? `${hitThrAbs} ppm·m` : `najvyšších ${hitThrPct} % letu (${recLabels.map((l, i) => `${l} od ${hitThrs[i]}`).join(', ')})`);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['﻿' + [set, head.join(';'), ...lines].join('\r\n')], { type: 'text/csv;charset=utf-8' }));
+  a.download = `prieniky-letov_${hitR}m.csv`; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+});
+updateHits();
 
 // ---------- značky šachiet a tabuľka ----------
 const termoLine = w => {
