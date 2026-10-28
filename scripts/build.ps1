@@ -1,6 +1,31 @@
 param([string]$Csv, [string]$Template, [string]$Out, [string[]]$Extra = @(), [string]$TempGrid = '')
 $inv = [cultureinfo]::InvariantCulture
-$rows = Import-Csv $Csv
+# záznam letu z CSV alebo XLSX (prvý hárok, prvý riadok = hlavička); čas zjednotený na yyyy/MM/dd HH:mm:ss
+function Import-Flight([string]$Path) {
+  if ($Path -notlike '*.xlsx') { return Import-Csv $Path }
+  Add-Type -AssemblyName System.IO.Compression.FileSystem
+  $zip = [IO.Compression.ZipFile]::OpenRead((Resolve-Path -LiteralPath $Path))
+  try {
+    $read = { param($n) $e = $zip.GetEntry($n); if (-not $e) { return $null }; $r = New-Object IO.StreamReader($e.Open()); try { [xml]$r.ReadToEnd() } finally { $r.Close() } }
+    $ss = @(); $sst = & $read 'xl/sharedStrings.xml'
+    if ($sst) { foreach ($si in $sst.sst.si) { $ss += ($si.SelectNodes('.//*[local-name()="t"]') | ForEach-Object { $_.InnerText }) -join '' } }
+    $sheet = & $read 'xl/worksheets/sheet1.xml'
+    $head = $null
+    foreach ($row in $sheet.worksheet.sheetData.row) {
+      $vals = @{}
+      foreach ($c in $row.c) {
+        $v = $c.v; if ($c.t -eq 's') { $v = $ss[[int]$v] } elseif ($c.t -eq 'inlineStr') { $v = $c.is.InnerText }
+        $vals[($c.r -replace '\d', '')] = "$v"
+      }
+      if (-not $head) { $head = $vals; continue }
+      $o = [ordered]@{}
+      foreach ($k in $head.Keys) { $o[$head[$k]] = $vals[$k] }
+      $o.time = $o.time -replace '-', '/'
+      [pscustomobject]$o
+    }
+  } finally { $zip.Dispose() }
+}
+$rows = Import-Flight $Csv
 $t0 = [datetime]::ParseExact($rows[0].time, 'yyyy/MM/dd HH:mm:ss', $inv)
 $sb = New-Object System.Text.StringBuilder
 foreach ($r in $rows) {
@@ -11,9 +36,9 @@ foreach ($r in $rows) {
 $data = '{"start":"' + $rows[0].time + '","end":"' + $rows[-1].time + '","id":"' + $rows[0].data_id + '","rows":[' + $sb.ToString().TrimEnd(",`n") + ']}'
 # ďalšie záznamy: len body s nameraným CH4
 $extra = foreach ($x in $Extra) {
-  $xr = Import-Csv $x
+  $xr = Import-Flight $x
   $pts = foreach ($r in $xr) {
-    if ([int]$r.methane_concentration -le 0) { continue }
+    if ([double]::Parse($r.methane_concentration, $inv) -le 0) { continue }
     $photo = if ($r.fileName) { '"' + $r.fileName + '"' } else { '0' }
     "[$($r.uav_latitude),$($r.uav_longitude),$($r.methane_concentration),$($r.'relative_altitude(m)'),$($r.'distance(m)'),""$($r.time.Substring(11))"",$photo]"
   }

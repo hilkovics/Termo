@@ -2,7 +2,8 @@
 
 Interaktívna mapa skládky Senec, ktorá spája:
 
-- **CH₄ z dronu** (laserový detektor, ppm·m) z dvoch záznamov 19. 8. 2026 (18:19:26 a 19:41:33). Tvar značky ukazuje záznam, farba hodnotu.
+- **CH₄ z dronu** (laserový detektor, ppm·m) z troch záznamov 19. 8. 2026 (18:19:26, 19:01:05 a 19:41:33). Tvar značky ukazuje záznam, farba hodnotu.
+- **Prieniky medzi letmi**: miesta, kde CH₄ nad prahom zachytilo viac letov do zvolenej vzdialenosti od seba (zóny na mape, zoznam, matica dvojíc letov, export CSV).
 - **Odplyňovacie šachty OŠ 1–15, OŠ 10A a ventily OT1–OT5** s polohou z PDF STELLA a meraním zo 6. 6. 2025.
 - **Teplotu LFG a CO** z merania Senec V/2026 v okruhu 30 m okolo 10 sond. Prekryv susedných okruhov je rozdelený v polovici vzdialenosti, každé miesto patrí najbližšej sonde.
 - **Termo ortomozaiku** (zmenšená `termo-result.png`) s prelínaním alebo oponou voči podkladu.
@@ -18,7 +19,7 @@ Otvorte `index.html` v prehliadači. Súbor `termo-result.png` musí byť v rovn
 |---|---|
 | `index.html` | hotová mapa s vloženými dátami |
 | `termo-result.png` | termo ortomozaika zmenšená 8× (13 cm/px) z `result.tif` |
-| `data/*_flight_record.csv` | záznamy z dronu (1 Hz) |
+| `data/*_flight_record.csv`, `data/*_flight_record.xlsx` | záznamy z dronu (1 Hz), CSV alebo XLSX s rovnakými stĺpcami |
 | `data/Tabuľka výsledkov meraní Senec V_2026.xlsx` | T LFG, CO a ďalšie hodnoty pre 10 sond |
 | `data/Tabulka CO.xlsx` | staršia tabuľka CO (rovnaké hodnoty CO ako V/2026) |
 | `data/Súradnice STELLA.pdf` | polohy šachiet a meranie 6. 6. 2025 |
@@ -29,10 +30,10 @@ Pôvodný `result.tif` (317 MB, GeoTIFF WGS84) v repozitári nie je, presahuje l
 
 ## Zostavenie mapy
 
-`scripts/template.html` je šablóna mapy. Polohy šachiet (PDF STELLA) a merania V/2026 sú v nej zapísané priamo. `scripts/build.ps1` do nej vloží body CH₄ z CSV a teplotnú mriežku (Windows PowerShell 5.1):
+`scripts/template.html` je šablóna mapy. Polohy šachiet (PDF STELLA) a merania V/2026 sú v nej zapísané priamo. `scripts/build.ps1` do nej vloží body CH₄ zo záznamov letov (CSV alebo XLSX) a teplotnú mriežku (Windows PowerShell 5.1). Prvý záznam je hlavný, ďalšie sa pridávajú cez `-Extra` v poradí, v akom sa majú zobraziť:
 
 ```powershell
-& .\scripts\build.ps1 -Csv ".\data\20260819 181926_flight_record.csv" -Extra ".\data\20260819 194133_flight_record.csv" -TempGrid .\data\termo-grid.bin -Template .\scripts\template.html -Out .\index.html
+& .\scripts\build.ps1 -Csv ".\data\20260819 181926_flight_record.csv" -Extra ".\data\20260819 190105_flight_record.xlsx", ".\data\20260819 194133_flight_record.csv" -TempGrid .\data\termo-grid.bin -Template .\scripts\template.html -Out .\index.html
 ```
 
 Teplotná mriežka vznikla z `result.tif` cez `scripts/TempCode.cs`. Každý pixel dostane polohu v palete: šedá časť podľa jasu, farebná podľa odtieňa. Hodnoty sa spriemerujú po blokoch 24 × 24 px (40 cm):
@@ -57,6 +58,16 @@ Add-Type -Path .\scripts\TifDown.cs -ReferencedAssemblies System.Drawing
 - `xlsx.ps1` vypíše obsah XLSX bez Excelu.
 - `HueStats.cs` vyhodnotí farby termo snímky.
 - `serve.ps1` spustí jednoduchý lokálny server.
+
+## Prieniky medzi letmi
+
+Panel **Prieniky medzi letmi** hľadá miesta, kde metán zachytilo viac letov:
+
+1. Z každého letu sa vezmú body nad prahom. Prah je buď v ppm·m, rovnaký pre všetky lety, alebo „najvyššie % letu“. Druhá možnosť vezme z každého letu rovnaký podiel jeho najsilnejších bodov a vyrovná tak rozdiely v citlivosti a výške letu. Záznam 19:01:05 má nastavenú citlivosť High a vyššie hodnoty pozadia.
+2. Bod je v prieniku, ak má do zvolenej vzdialenosti (1 – 20 m) bod aspoň jedného ďalšieho letu. Pri voľbe „Všetky vybrané“ musí mať nablízku body všetkých vybraných letov.
+3. Body prieniku, ktoré sú od seba do zvolenej vzdialenosti, sa spoja do jednej zóny. Zóny sú zoradené podľa počtu letov a potom podľa najnižšieho z maxím jednotlivých letov, teda hodnoty, ktorú prekročil každý let.
+
+Matica dvojíc ukazuje, koľko % bodov jedného letu má nablízku bod iného letu. Kliknutím na bunku sa porovná len táto dvojica. Tlačidlo **Stiahnuť zóny (CSV)** uloží zóny s aktuálnym nastavením (oddeľovač `;`, desatinná čiarka).
 
 ## Poznámky
 
